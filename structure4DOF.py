@@ -26,8 +26,8 @@ def run_simulation():
     t_eval = np.arange(0, T_total, safe_dt)
 
     # Newmark-Beta integration parameters
-    gamma = 0.5
-    beta = 0.3
+    gamma = 0.5 # Controls velocity Integration
+    beta = 0.3  # Controls displacement integration
 
     # System matrices
     M = np.diag(m)

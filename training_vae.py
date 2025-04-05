@@ -33,48 +33,70 @@ def train_vae():
     dataset = TensorDataset(tensor_data)
     dataloader = DataLoader(dataset, batch_size=64, shuffle=True)  # Mini-batch learning
 
-    # Define VAE loss function combining reconstruction + KL divergence
-    def loss_function(recon, x, mu, logvar):
-        recon_loss = nn.functional.mse_loss(recon, x, reduction='sum')  # Reconstruction error
-        kld = 0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())     # KL divergence term
-        return recon_loss + kld
-
     # Use GPU if available
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = VAE().to(device)                     # Initialize model
-    optimizer = optim.Adam(model.parameters(), lr=1e-3)  # Optimizer setup
+    model = VAE(latent_dim=12).to(device)  # Make sure this matches the trained model architecture
+    optimizer = optim.Adam(model.parameters(), lr=1e-3)
 
-    n_epochs = 50
+    n_epochs = 150
     losses = []
+    recon_losses = []
+    kld_losses = []
 
     # ----------------------------
     #  Training Loop
     # ----------------------------
     for epoch in range(n_epochs):
-        model.train()          # Enable training mode (activates dropout/batchnorm if used)
+        model.train()
         total_loss = 0
+        total_recon = 0
+        total_kld = 0
+
+        # KL warm-up: gradually increase KL weight
+        kl_weight = min(1.0, epoch / 50.0)  # Linear ramp up for first 50 epochs
 
         for batch in dataloader:
-            x_batch = batch[0].to(device)        # Move input to device
-            optimizer.zero_grad()                # Reset gradients
-            recon, mu, logvar = model(x_batch)   # Forward pass
-            loss = loss_function(recon, x_batch, mu, logvar)  # Compute loss
-            loss.backward()                      # Backpropagate
-            optimizer.step()                     # Update weights
-            total_loss += loss.item()            # Accumulate loss
+            x_batch = batch[0].to(device)
+            optimizer.zero_grad()
+            recon, mu, logvar = model(x_batch)
 
-        avg_loss = total_loss / len(dataloader.dataset)  # Average loss per epoch
+            # Feature-wise weights (more weight on acceleration components)
+            weights = torch.tensor([1.0]*4 + [1.0]*4 + [1.0]*4, dtype=torch.float32, device=recon.device)
+            recon_loss = ((weights * (recon - x_batch) ** 2)).sum()
+            kld = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
+
+            # Apply KL warm-up to avoid collapse
+            loss = recon_loss + kl_weight * kld
+
+            loss.backward()
+            optimizer.step()
+
+            total_loss += loss.item()
+            total_recon += recon_loss.item()
+            total_kld += kld.item()
+
+        avg_loss = total_loss / len(dataloader.dataset)
+        avg_recon = total_recon / len(dataloader.dataset)
+        avg_kld = total_kld / len(dataloader.dataset)
         losses.append(avg_loss)
-        print(f"Epoch {epoch + 1}/{n_epochs}, Loss: {avg_loss:.4f}")
+        recon_losses.append(avg_recon)
+        kld_losses.append(avg_kld)
+
+        print(f"Epoch {epoch + 1}/{n_epochs} | Total Loss: {avg_loss:.4f} | Recon Loss: {avg_recon:.4f} | KL: {avg_kld:.4f} | KL Weight: {kl_weight:.2f}")
 
     # ----------------------------
     #  Plot Training Loss
     # ----------------------------
-    plt.plot(losses)
+    plt.figure(figsize=(10, 6))
+    plt.plot(losses, label="Total Loss")
+    plt.plot(recon_losses, label="Reconstruction Loss")
+    plt.plot(kld_losses, label="KL Divergence")
     plt.xlabel("Epoch")
     plt.ylabel("Loss")
-    plt.title("Training Loss of VAE")
+    plt.title("Training Loss Components")
+    plt.legend()
     plt.grid()
+    plt.tight_layout()
     plt.show()
 
     # Save model weights
