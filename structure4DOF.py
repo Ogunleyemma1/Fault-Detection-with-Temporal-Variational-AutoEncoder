@@ -4,7 +4,7 @@
 # Outputs:
 # - A CSV file (vae_input_data.csv) containing displacement,
 #   velocity, and acceleration for use in VAE training.
-# - Plots of the time evolution of all 3 signals.
+# - Plots of the time evolution of x, v, a per DOF in 3 subplots per figure.
 # ---------------------------------------------
 
 import numpy as np
@@ -26,8 +26,8 @@ def run_simulation():
     t_eval = np.arange(0, T_total, safe_dt)
 
     # Newmark-Beta integration parameters
-    gamma = 0.5 # Controls velocity Integration
-    beta = 0.3  # Controls displacement integration
+    gamma = 0.5  # Controls velocity integration
+    beta = 0.3   # Controls displacement integration
 
     # System matrices
     M = np.diag(m)
@@ -82,20 +82,37 @@ def run_simulation():
     df_vae.to_csv("vae_input_data.csv", index=False)
 
     # ----------------------------
-    #  Plot Sampled Outputs
+    #  Plot DOF-wise Subplots (x, v, a) for each DOF
     # ----------------------------
     five_min_indices = np.arange(0, len(t_eval), int(300 // safe_dt)).astype(int)
     five_min_indices = five_min_indices[five_min_indices < len(t_eval)]
 
-    plt.figure(figsize=(12, 8))
-    plt.subplot(3, 1, 1)
-    plt.plot(t_eval[five_min_indices], x[:, five_min_indices].T, marker='o')
-    plt.xlabel("Time (s)"); plt.ylabel("Displacement (m)"); plt.title("Displacements (Every 5 Minutes)")
-    plt.subplot(3, 1, 2)
-    plt.plot(t_eval[five_min_indices], v[:, five_min_indices].T, marker='o')
-    plt.xlabel("Time (s)"); plt.ylabel("Velocity (m/s)"); plt.title("Velocities (Every 5 Minutes)")
-    plt.subplot(3, 1, 3)
-    plt.plot(t_eval[five_min_indices], a[:, five_min_indices].T, marker='o')
-    plt.xlabel("Time (s)"); plt.ylabel("Acceleration (m/s²)"); plt.title("Accelerations (Every 5 Minutes)")
-    plt.tight_layout()
-    plt.show()
+    colors = ['tab:blue', 'tab:orange', 'tab:green']
+
+    for i in range(4):
+        plt.figure(figsize=(10, 8))
+
+        plt.subplot(3, 1, 1)
+        plt.plot(t_eval[five_min_indices], x[i, five_min_indices], marker='o', color=colors[0], label=f"x{i+1} (Displacement)")
+        plt.ylabel("Displacement (m)")
+        plt.title(f"DOF {i+1} - Displacement vs Time")
+        plt.legend()
+        plt.grid(True)
+
+        plt.subplot(3, 1, 2)
+        plt.plot(t_eval[five_min_indices], v[i, five_min_indices], marker='o', color=colors[1], label=f"v{i+1} (Velocity)")
+        plt.ylabel("Velocity (m/s)")
+        plt.title(f"DOF {i+1} - Velocity vs Time")
+        plt.legend()
+        plt.grid(True)
+
+        plt.subplot(3, 1, 3)
+        plt.plot(t_eval[five_min_indices], a[i, five_min_indices], marker='o', color=colors[2], label=f"a{i+1} (Acceleration)")
+        plt.xlabel("Time (s)")
+        plt.ylabel("Acceleration (m/s²)")
+        plt.title(f"DOF {i+1} - Acceleration vs Time")
+        plt.legend()
+        plt.grid(True)
+
+        plt.tight_layout()
+        plt.show()
