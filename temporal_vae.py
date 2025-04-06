@@ -8,7 +8,7 @@ import torch.nn as nn
 # ----------------------------
 
 class VAE(nn.Module):
-    def __init__(self, input_dim=12, latent_dim=12):
+    def __init__(self, input_dim=12, latent_dim=3):
         """
         input_dim: Number of input features (12 for 4DOF [disp, vel, acc])
         latent_dim: Size of the compressed latent representation
@@ -17,23 +17,23 @@ class VAE(nn.Module):
 
         #  Encoder Network (Input → Hidden → Compressed Representation)
         self.encoder = nn.Sequential(
-            nn.Linear(input_dim, 32),  # First hidden layer with 32 neurons
+            nn.Linear(input_dim, 9),  # First hidden layer with 32 neurons
             nn.ReLU(),
-            nn.Linear(32, 16),         # Second hidden layer with 16 neurons
+            nn.Linear(9, 6),         # Second hidden layer with 16 neurons
             nn.ReLU(),
         )
 
         # Output layers from encoder to estimate parameters of latent Gaussian distribution
-        self.fc_mu = nn.Linear(16, latent_dim)        # Mean of latent space
-        self.fc_logvar = nn.Linear(16, latent_dim)    # Log-variance of latent space
+        self.fc_mu = nn.Linear(6, latent_dim)        # Mean of latent space
+        self.fc_logvar = nn.Linear(6, latent_dim)    # Log-variance of latent space
 
         #  Decoder Network (Latent → Hidden → Reconstructed Input)
         self.decoder = nn.Sequential(
-            nn.Linear(latent_dim, 16),  # Reverse path of encoder
+            nn.Linear(latent_dim, 6),  # Reverse path of encoder
             nn.ReLU(),
-            nn.Linear(16, 32),
+            nn.Linear(6, 9),
             nn.ReLU(),
-            nn.Linear(32, input_dim),
+            nn.Linear(9, input_dim),
             
         )
 
