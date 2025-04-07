@@ -11,6 +11,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 
+
 def run_simulation():
     # ----------------------------
     #  Define System Parameters
@@ -20,14 +21,14 @@ def run_simulation():
     c = np.array([1.0, 1.0, 1.0, 1.0])
 
     # Time settings
-    T_total = 3600
-    dt = 0.1
+    T_total = 20
+    dt = 0.001
     safe_dt = max(dt, 1e-6)
     t_eval = np.arange(0, T_total, safe_dt)
 
     # Newmark-Beta integration parameters
     gamma = 0.5  # Controls velocity integration
-    beta = 0.3   # Controls displacement integration
+    beta = 0.25   # Controls displacement integration
 
     # System matrices
     M = np.diag(m)
@@ -54,7 +55,7 @@ def run_simulation():
 
     # External sinusoidal force applied to the last mass
     def F_ext(t):
-        return np.array([0.0, 0.0, 0.0, 5.0 * np.sin(2 * np.pi * t)])
+        return np.array([0.0, 0.0, 0.0, 1.0 * np.sin(2*np.pi * 0.5 * t)])
 
     # ----------------------------
     #  Time-Stepping Loop
@@ -82,37 +83,35 @@ def run_simulation():
     df_vae.to_csv("vae_input_data.csv", index=False)
 
     # ----------------------------
-    #  Plot DOF-wise Subplots (x, v, a) for each DOF
+    #  Plot DOF-wise Subplots (x, v, a) for each DOF separately
     # ----------------------------
-    five_min_indices = np.arange(0, len(t_eval), int(300 // safe_dt)).astype(int)
-    five_min_indices = five_min_indices[five_min_indices < len(t_eval)]
+    plot_indices = np.linspace(0, len(t_eval) - 1, 500, dtype=int)
+    time = t_eval[plot_indices]
+    x_plot = x[:, plot_indices]
+    v_plot = v[:, plot_indices]
+    a_plot = a[:, plot_indices]
 
-    colors = ['tab:blue', 'tab:orange', 'tab:green']
+    for dof in range(4):
+        fig, axs = plt.subplots(3, 1, figsize=(10, 7), sharex=True)
 
-    for i in range(4):
-        plt.figure(figsize=(10, 8))
+        axs[0].plot(time, x_plot[dof], color='tab:blue', label=f"x{dof+1} (Displacement)")
+        axs[0].set_ylabel("Displacement (m)")
+        axs[0].set_title(f"DOF {dof+1} - Displacement vs Time")
+        axs[0].grid(True)
+        axs[0].legend()
 
-        plt.subplot(3, 1, 1)
-        plt.plot(t_eval[five_min_indices], x[i, five_min_indices], marker='o', color=colors[0], label=f"x{i+1} (Displacement)")
-        plt.ylabel("Displacement (m)")
-        plt.title(f"DOF {i+1} - Displacement vs Time")
-        plt.legend()
-        plt.grid(True)
+        axs[1].plot(time, v_plot[dof], color='tab:orange', label=f"v{dof+1} (Velocity)")
+        axs[1].set_ylabel("Velocity (m/s)")
+        axs[1].set_title(f"DOF {dof+1} - Velocity vs Time")
+        axs[1].grid(True)
+        axs[1].legend()
 
-        plt.subplot(3, 1, 2)
-        plt.plot(t_eval[five_min_indices], v[i, five_min_indices], marker='o', color=colors[1], label=f"v{i+1} (Velocity)")
-        plt.ylabel("Velocity (m/s)")
-        plt.title(f"DOF {i+1} - Velocity vs Time")
-        plt.legend()
-        plt.grid(True)
-
-        plt.subplot(3, 1, 3)
-        plt.plot(t_eval[five_min_indices], a[i, five_min_indices], marker='o', color=colors[2], label=f"a{i+1} (Acceleration)")
-        plt.xlabel("Time (s)")
-        plt.ylabel("Acceleration (m/s²)")
-        plt.title(f"DOF {i+1} - Acceleration vs Time")
-        plt.legend()
-        plt.grid(True)
+        axs[2].plot(time, a_plot[dof], color='tab:green', label=f"a{dof+1} (Acceleration)")
+        axs[2].set_xlabel("Time (s)")
+        axs[2].set_ylabel("Acceleration (m/s²)")
+        axs[2].set_title(f"DOF {dof+1} - Acceleration vs Time")
+        axs[2].grid(True)
+        axs[2].legend()
 
         plt.tight_layout()
         plt.show()
