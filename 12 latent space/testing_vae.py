@@ -6,61 +6,52 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from temporal_vae import VAE
 
-# ----------------------------
-#  Test/Infer using Trained VAE
-# ----------------------------
-
 def test_vae():
-    # Load input data from CSV
+    # Load input data
     df = pd.read_csv("vae_input_data.csv")
     input = df.values.astype(np.float32)
 
-    # Load saved normalization parameters from training
+    # Load normalization stats
     mean = np.load("vae_mean.npy")
     std = np.load("vae_std.npy")
 
-    # Apply normalization to match training scale
+    # Normalize input
     input_norm = (input - mean) / std
-
-    # Convert input to PyTorch tensor
     x = torch.tensor(input_norm)
 
-    # ----------------------------
-    #  Load Trained VAE Model
-    # ----------------------------
+    # Load model
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = VAE(latent_dim=12).to(device)  # Make sure this matches the trained model architecture
+    model = VAE(latent_dim=12).to(device)
     model.load_state_dict(torch.load("temporal_vae_model.pt", map_location=device))
-    model.eval()  # Set to evaluation mode to disable dropout, etc.
+    model.eval()
 
-    # ----------------------------
-    #  Run Inference (Reconstruction)
-    # ----------------------------
+    # Inference
     with torch.no_grad():
         x = x.to(device)
         recon, mu, logvar = model(x)
-        recon_np = recon.cpu().numpy()  # Get normalized reconstruction
+        recon_np = recon.cpu().numpy()
 
     # ----------------------------
-    #  Plot normalized input vs output
+    #  Plot for all DOFs
     # ----------------------------
-    import matplotlib.pyplot as plt
+    dof_labels = ['x', 'v', 'a']
+    num_dofs = 4
+    timesteps = 1000  # Plot first 1000 points
 
-    plt.figure(figsize=(14, 10))
-    for i, col in enumerate(['x1', 'v1', 'a1']):
-        idx = df.columns.get_loc(col)
-        plt.subplot(3, 1, i+1)
-        plt.plot(input_norm[:, idx][:1000], label='Normalized Input')
-        plt.plot(recon_np[:, idx][:1000], label='Normalized Recon', alpha=0.7)
-        plt.title(f"Normalized Comparison - {col}")
-        plt.legend()
-        plt.grid(True)
-
-    plt.tight_layout()
-    plt.show()
+    for i, label in enumerate(dof_labels):  # x, v, a
+        fig, axs = plt.subplots(num_dofs, 1, figsize=(14, 10), sharex=True)
+        for dof in range(num_dofs):
+            idx = i * num_dofs + dof  # col index in data
+            axs[dof].plot(input_norm[:, idx][:timesteps], label='Normalized Input')
+            axs[dof].plot(recon_np[:, idx][:timesteps], label='Normalized Recon', alpha=0.7)
+            axs[dof].set_title(f"DOF {dof+1} - Normalized Comparison - {label}{dof+1}")
+            axs[dof].legend()
+            axs[dof].grid(True)
+        plt.tight_layout()
+        plt.show()
 
     # ----------------------------
-    #  Denormalize and Save Output
+    #  Save Denormalized Output
     # ----------------------------
     recon_denorm = (recon_np * std) + mean
     recon_df = pd.DataFrame(recon_denorm, columns=df.columns)

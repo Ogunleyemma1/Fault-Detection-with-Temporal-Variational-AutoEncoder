@@ -15,10 +15,10 @@ import testing_vae           # VAE testing module (reconstruction)
 
 def main():
     print("Running structural simulation...")
-    structure4DOF.run_simulation()  # Step 1: Generates vae_input_data.csv
+    #structure4DOF.run_simulation()  # Step 1: Generates vae_input_data.csv
 
     print("Training Temporal VAE...")
-    training_vae.train_vae()        # Step 2: Trains and saves the VAE model
+    #training_vae.train_vae()        # Step 2: Trains and saves the VAE model
 
     print("Testing Temporal VAE...")
     testing_vae.test_vae()          # Step 3: Loads the trained model and reconstructs the input
