@@ -21,7 +21,7 @@ def test_vae():
 
     # Load model
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = VAE(latent_dim=12).to(device)
+    model = VAE(latent_dim=3).to(device)
     model.load_state_dict(torch.load("temporal_vae_model.pt", map_location=device))
     model.eval()
 

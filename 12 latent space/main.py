@@ -11,10 +11,10 @@ import compare_initial_windows  # Error comparison module
 
 def main():
     print("Running structural simulation...")
-    # structure4DOF.run_simulation()
+    structure4DOF.run_simulation()
 
     print("Training Temporal VAE...")
-    # training_vae.train_vae()
+    training_vae.train_vae()
 
     print("Testing Temporal VAE...")
     testing_vae.test_vae()

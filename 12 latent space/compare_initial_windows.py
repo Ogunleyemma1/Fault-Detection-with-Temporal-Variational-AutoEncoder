@@ -5,16 +5,13 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 def plot_reconstruction_window_comparison():
-    # Load data
     input_df = pd.read_csv("vae_input_data.csv")
     recon_df = pd.read_csv("vae_reconstruction.csv")
 
-    # Time windows to compare
     time_windows = [50, 100, 200]
     dofs = ['x1', 'x2', 'x3', 'x4', 'v1', 'v2', 'v3', 'v4', 'a1', 'a2', 'a3', 'a4']
 
-    # Set up the plot
-    fig, axs = plt.subplots(3, 1, figsize=(12, 12), sharex=True)
+    fig, axs = plt.subplots(len(time_windows), 1, figsize=(12, 12), sharex=True)
     colors = ['tab:blue', 'tab:orange', 'tab:green']
 
     for j, window in enumerate(time_windows):

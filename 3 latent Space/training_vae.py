@@ -1,5 +1,3 @@
-# training_vae.py
-
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -9,6 +7,7 @@ import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader, TensorDataset
 
 from temporal_vae import VAE  # Import VAE model
+from structure4DOF import get_system_matrices, system_config, get_force_function  # Updated to import system config and force
 
 # ----------------------------
 #  Train VAE Model
@@ -31,17 +30,21 @@ def train_vae():
     # Convert to PyTorch tensor and DataLoader
     tensor_data = torch.tensor(input_norm)
     dataset = TensorDataset(tensor_data)
-    dataloader = DataLoader(dataset, batch_size=64, shuffle=True)  # Mini-batch learning
+    dataloader = DataLoader(dataset, batch_size=64, shuffle=True)
 
-    # Use GPU if available
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = VAE(latent_dim=12).to(device)  # Make sure this matches the trained model architecture
+    model = VAE(latent_dim=3).to(device)
     optimizer = optim.Adam(model.parameters(), lr=1e-3)
 
     n_epochs = 150
     losses = []
     recon_losses = []
     kld_losses = []
+    phys_losses = []
+
+    # Get physical system matrices and external force
+    M, C, K = get_system_matrices(device)
+    F_ext = get_force_function(device)
 
     # ----------------------------
     #  Training Loop
@@ -51,38 +54,60 @@ def train_vae():
         total_loss = 0
         total_recon = 0
         total_kld = 0
+        total_phys = 0
 
-        # KL warm-up: gradually increase KL weight
-        kl_weight = min(1.0, epoch / 50.0)  # Linear ramp up for first 50 epochs
+        kl_weight = min(1.0, epoch / 50.0)
+        lambda_phys = min(1e-2, 1e-4 + epoch * 1e-4)  # Gradually increase
 
         for batch in dataloader:
             x_batch = batch[0].to(device)
             optimizer.zero_grad()
             recon, mu, logvar = model(x_batch)
 
-            # Feature-wise weights (more weight on acceleration components)
-            weights = torch.tensor([1.0]*4 + [1.0]*4 + [1.0]*4, dtype=torch.float32, device=recon.device)
+            # Weighted reconstruction loss
+            weights = torch.tensor([1.0]*4 + [1.0]*4 + [1.0]*4, dtype=torch.float32, device=device)
             recon_loss = ((weights * (recon - x_batch) ** 2)).sum()
+
+            # KL Divergence
             kld = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
 
-            # Apply KL warm-up to avoid collapse
-            loss = recon_loss + kl_weight * kld
+            # Physics constraint loss
+            x_rec = recon[:, :4]
+            v_rec = recon[:, 4:8]
+            a_rec = recon[:, 8:12]
 
-            loss.backward()
-            optimizer.step()
+            # Time batch for physics (assumes consistent time span)
+            t_batch = torch.linspace(0, system_config["T_total"], steps=x_rec.shape[0], device=device)
+            F_batch = F_ext(t_batch).T
+
+            # Residual: M*a + C*v + K*x - F
+            residual = M @ a_rec.T + C @ v_rec.T + K @ x_rec.T - F_batch
+            
+            # Normalize residual column-wise (per sample)
+            residual_norm = residual / (residual.norm(dim=0, keepdim=True) + 1e-8)
+            physics_loss = torch.mean(residual_norm.pow(2))
+
+            # Total loss
+            loss = recon_loss + kl_weight * kld + lambda_phys * physics_loss
+            loss.backward() # Computes Gradient of Loss
+            optimizer.step() # Update model parameters to minize loss
 
             total_loss += loss.item()
             total_recon += recon_loss.item()
             total_kld += kld.item()
+            total_phys += physics_loss.item()
 
-        avg_loss = total_loss / len(dataloader.dataset)
-        avg_recon = total_recon / len(dataloader.dataset)
-        avg_kld = total_kld / len(dataloader.dataset)
-        losses.append(avg_loss)
-        recon_losses.append(avg_recon)
-        kld_losses.append(avg_kld)
+        # Logging
+        dataset_size = len(dataloader.dataset)
+        losses.append(total_loss / dataset_size)
+        recon_losses.append(total_recon / dataset_size)
+        kld_losses.append(total_kld / dataset_size)
+        phys_losses.append(total_phys / dataset_size)
 
-        print(f"Epoch {epoch + 1}/{n_epochs} | Total Loss: {avg_loss:.4f} | Recon Loss: {avg_recon:.4f} | KL: {avg_kld:.4f} | KL Weight: {kl_weight:.2f}")
+        print(f"Epoch {epoch + 1}/{n_epochs} | "
+              f"Total Loss: {losses[-1]:.4f} | Recon: {recon_losses[-1]:.4f} | "
+              f"KL: {kld_losses[-1]:.4f} | Phys: {phys_losses[-1]:.4f} | "
+              f"λ_phys: {lambda_phys:.5f}")
 
     # ----------------------------
     #  Plot Training Loss
@@ -91,6 +116,7 @@ def train_vae():
     plt.plot(losses, label="Total Loss")
     plt.plot(recon_losses, label="Reconstruction Loss")
     plt.plot(kld_losses, label="KL Divergence")
+    plt.plot(phys_losses, label="Physics Loss")
     plt.xlabel("Epoch")
     plt.ylabel("Loss")
     plt.title("Training Loss Components")
@@ -99,5 +125,4 @@ def train_vae():
     plt.tight_layout()
     plt.show()
 
-    # Save model weights
     torch.save(model.state_dict(), "temporal_vae_model.pt")
