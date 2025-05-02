@@ -10,8 +10,8 @@ system_config = {
     "mass": [1.0, 1.0, 1.0, 1.0],
     "stiffness": [100.0, 100.0, 100.0, 100.0],
     "damping": [0.1, 0.1, 0.1, 0.1],
-    "T_total": 20,
-    "dt": 0.0001,
+    "T_total": 10,
+    "dt": 0.01,
     "beta": 0.25,
     "gamma": 0.5,
     "force_function": lambda t: torch.zeros((len(t), 4))  # Default zero force (batch of zeros)
@@ -71,7 +71,8 @@ def run_simulation():
     beta = system_config["beta"]
     gamma = system_config["gamma"]
 
-    t_eval = np.arange(0, T_total, dt)
+    num_steps = int(T_total / dt) + 1  # Include final time
+    t_eval = np.linspace(0, T_total, num_steps)
     M, C, K = compute_matrices(m, k, c)
 
     M_inv = np.linalg.pinv(M) if np.linalg.cond(M) > 1e10 else np.linalg.inv(M)
@@ -109,7 +110,7 @@ def run_simulation():
     df_vae = pd.DataFrame(data_for_vae, columns=['x1', 'x2', 'x3', 'x4', 'v1', 'v2', 'v3', 'v4', 'a1', 'a2', 'a3', 'a4'])
     df_vae.to_csv("vae_input_data.csv", index=False)
 
-    plot_indices = np.linspace(0, len(t_eval) - 1, 500, dtype=int)
+    plot_indices = np.linspace(0, num_steps - 1, min(num_steps, 1000), dtype=int)
     time = t_eval[plot_indices]
     x_plot = x[:, plot_indices]
     v_plot = v[:, plot_indices]

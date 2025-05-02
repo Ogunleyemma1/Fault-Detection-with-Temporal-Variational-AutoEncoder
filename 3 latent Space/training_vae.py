@@ -57,7 +57,7 @@ def train_vae():
         total_phys = 0
 
         kl_weight = min(1.0, epoch / 50.0)
-        lambda_phys = min(1e-2, 1e-4 + epoch * 1e-4)  # Gradually increase
+        lambda_phys = 0.01 if epoch > 10 else 1e-4
 
         for batch in dataloader:
             x_batch = batch[0].to(device)

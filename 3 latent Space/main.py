@@ -14,13 +14,13 @@ def main():
     structure4DOF.run_simulation()
 
     print("Training Temporal VAE...")
-    training_vae.train_vae()
+    #training_vae.train_vae()
 
     print("Testing Temporal VAE...")
-    testing_vae.test_vae()
+    #testing_vae.test_vae()
 
     print("Plotting reconstruction error comparison over time windows...")
-    compare_initial_windows.plot_reconstruction_window_comparison()
+    #compare_initial_windows.plot_reconstruction_window_comparison()
 
     print("Pipeline completed successfully.")
 
