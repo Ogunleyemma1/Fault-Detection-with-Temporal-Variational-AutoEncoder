@@ -36,7 +36,7 @@ def test_vae():
     # ----------------------------
     num_features = input.shape[1]
     num_dofs = num_features // 3
-    timesteps = 1000  # Plot first 1000 points
+    timesteps = input.shape[0]
     variable_labels = ['x', 'v', 'a']
     colors = ['tab:blue', 'tab:orange']
 

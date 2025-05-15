@@ -21,7 +21,7 @@ def test_vae():
 
     # Load model
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = VAE(latent_dim=3).to(device)
+    model = VAE(input_dim=input.shape[1], latent_dim=3).to(device)
     model.load_state_dict(torch.load("temporal_vae_model.pt", map_location=device))
     model.eval()
 
@@ -32,21 +32,27 @@ def test_vae():
         recon_np = recon.cpu().numpy()
 
     # ----------------------------
-    #  Plot for all DOFs
+    #  Plot for all DOFs and variables
     # ----------------------------
-    dof_labels = ['x', 'v', 'a']
-    num_dofs = 4
-    timesteps = 1000  # Plot first 1000 points
+    num_features = input.shape[1]
+    num_dofs = num_features // 3
+    timesteps = input.shape[0]
+    variable_labels = ['x', 'v', 'a']
+    plot_colors = ['tab:blue', 'tab:orange']
 
-    for i, label in enumerate(dof_labels):  # x, v, a
-        fig, axs = plt.subplots(num_dofs, 1, figsize=(14, 10), sharex=True)
+    for i, label in enumerate(variable_labels):  # x, v, a
+        fig, axs = plt.subplots(num_dofs, 1, figsize=(14, 2.5 * num_dofs), sharex=True)
+        if num_dofs == 1:
+            axs = [axs]
+
         for dof in range(num_dofs):
-            idx = i * num_dofs + dof  # col index in data
-            axs[dof].plot(input_norm[:, idx][:timesteps], label='Normalized Input')
-            axs[dof].plot(recon_np[:, idx][:timesteps], label='Normalized Recon', alpha=0.7)
+            idx = i * num_dofs + dof
+            axs[dof].plot(input_norm[:, idx], label='Normalized Input', color=plot_colors[0])
+            axs[dof].plot(recon_np[:, idx], label='Normalized Recon', color=plot_colors[1], alpha=0.7)
             axs[dof].set_title(f"DOF {dof+1} - Normalized Comparison - {label}{dof+1}")
             axs[dof].legend()
             axs[dof].grid(True)
+
         plt.tight_layout()
         plt.show()
 
@@ -57,3 +63,6 @@ def test_vae():
     recon_df = pd.DataFrame(recon_denorm, columns=df.columns)
     recon_df.to_csv("vae_reconstruction.csv", index=False)
     print("Reconstruction saved to vae_reconstruction.csv")
+
+if __name__ == "__main__":
+    test_vae()

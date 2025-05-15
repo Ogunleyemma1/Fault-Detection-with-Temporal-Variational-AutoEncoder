@@ -1,3 +1,5 @@
+# structure2DOF.py
+
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -123,6 +125,9 @@ def run_simulation():
 
         plt.tight_layout()
         plt.show(block=True)
+    
+    return t_eval, x  # return time and displacement data
+
 
 # ----------------------------
 #  Optional Force Getter

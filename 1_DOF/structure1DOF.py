@@ -9,7 +9,7 @@ import torch
 system_config = {
     "mass": [100.0],          # mass m = 100 kg
     "stiffness": [1000.0],     # stiffness k = 1000 N/m
-    "damping": [25.0],         # damping c = 25 kg/s
+    "damping": [0.0],         # damping c = 25 kg/s
     "T_total": 30.0,           # total simulation time (s)
     "dt": 0.01,                # timestep size
     "beta": 0.25,              # Newmark-Beta parameters
@@ -82,9 +82,10 @@ def run_simulation():
         b = F_t + M @ (x[:, i-1] / denom + v[:, i-1] / (beta * dt) + (0.5 - beta) * a[:, i-1])
         b -= C @ (v[:, i-1] + (1 - gamma) * dt * a[:, i-1])
 
-        x[:, i] = np.clip(K_inv @ b, -1e5, 1e5)
-        a[:, i] = np.clip((x[:, i] - x[:, i-1]) / denom - v[:, i-1] / (beta * dt) - (0.5 - beta) * a[:, i-1], -1e5, 1e5)
-        v[:, i] = np.clip(v[:, i-1] + dt * ((1 - gamma) * a[:, i-1] + gamma * a[:, i]), -1e5, 1e5)
+        x[:, i] = K_inv @ b
+        a[:, i] = (x[:, i] - x[:, i-1]) / denom - v[:, i-1] / (beta * dt) - (0.5 - beta) * a[:, i-1]
+        v[:, i] = v[:, i-1] + dt * ((1 - gamma) * a[:, i-1] + gamma * a[:, i])
+
 
     print("1DOF Free Vibration Simulation completed successfully.")
 
@@ -115,7 +116,7 @@ def run_simulation():
         ax.grid(True)
         ax.legend()
 
-    plt.suptitle("1DOF Free Vibration: Example 1.10.1")
+    plt.suptitle(f"1DOF Undamped Free Vibration (Numerical Solution)\nTime Step Size: Δt = {dt:.7f} s")
     plt.tight_layout()
     plt.show()
 
