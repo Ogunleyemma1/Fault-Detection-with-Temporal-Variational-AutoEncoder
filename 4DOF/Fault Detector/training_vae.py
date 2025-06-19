@@ -14,17 +14,37 @@ def kl_anneal_function(epoch, n_epochs, start=0.0, stop=1.0, anneal_ratio=0.3):
     return float(stop / (1.0 + np.exp(-x * 5)))
 
 def train_vae(seq_len=100):
-    df = pd.read_csv("vae_input_data.csv")
-    data = df.values.astype(np.float32)
+    # === REPLACE DATA LOADING BLOCK ===
+    # 1. Load all healthy_seed CSVs
+    import os
+    HEALTHY_DIR = "data_generation/healthy_runs"
+    dfs = []
+    for f in sorted(os.listdir(HEALTHY_DIR)):
+        if f.startswith("healthy_seed") and f.endswith(".csv"):
+            df = pd.read_csv(os.path.join(HEALTHY_DIR, f))
+            dfs.append(df.values.astype(np.float32))
+    data = np.vstack(dfs)  # shape (n_samples, 12)
+    print(f"Loaded data shape: {data.shape}")
+
+    # 2. Normalize
     mean = data.mean(axis=0)
     std = data.std(axis=0)
     data_norm = (data - mean) / std
     np.save("vae_mean.npy", mean)
     np.save("vae_std.npy", std)
 
-    sequences = [data_norm[i:i + seq_len] for i in range(len(data_norm) - seq_len + 1)]
-    sequences = np.stack(sequences)
-    dataset = TensorDataset(torch.tensor(sequences, dtype=torch.float32))
+    # 3. Windowing
+    windows = [data_norm[i:i+seq_len] for i in range(len(data_norm) - seq_len + 1)]
+    windows = np.stack(windows)
+    print(f"Total windows: {len(windows)}")
+
+    # 4. Use only first 40% for training (shuffle if you want random sample, here just take first 40%)
+    n_total = len(windows)
+    n_train = int(0.4 * n_total)
+    windows = windows[:n_train]
+    print(f"Using {len(windows)} windows for training (40% of all healthy data)")
+
+    dataset = TensorDataset(torch.tensor(windows, dtype=torch.float32))
     dataloader = DataLoader(dataset, batch_size=32, shuffle=True)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -32,7 +52,7 @@ def train_vae(seq_len=100):
     optimizer = optim.Adam(model.parameters(), lr=5e-4)
     scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=100, gamma=0.5)
 
-    n_epochs = 300
+    n_epochs = 50
     losses, recon_losses, kld_losses = [], [], []
 
     for epoch in range(n_epochs):

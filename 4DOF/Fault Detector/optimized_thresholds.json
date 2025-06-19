@@ -1,6 +1,5 @@
 {
-  "MSE_optimal_F1": 3.2112314701080322,
-  "CorrComplement_optimal_F1": 0.32716405158410405,
-  "MSE_normal_max": 2.5689852237701416,
-  "MSE_fault_min": 3.853477954864502
+  "MSE_optimal_F1": 68.74030004703242,
+  "CorrelationComplement_optimal_F1": 68.74030004703242,
+  "PhysicsInformedLoss_optimal_F1": 68.74030004703242
 }
