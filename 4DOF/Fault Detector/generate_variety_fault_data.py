@@ -4,17 +4,21 @@ import pandas as pd
 import torch
 import matplotlib.pyplot as plt
 
-# ---- PHYSICAL PARAMETERS ----
+# === SET YOUR FOLDER HERE ===
+FAULT_DIR = r"data_generation/faults"
+STRUCTURAL_FAULT_DIR = os.path.join(FAULT_DIR, "structural_faults")
+SENSOR_FAULT_DIR = os.path.join(FAULT_DIR, "sensor_faults")
+PLOT_SUFFIX = "plots"
+HEALTHY_FILE = os.path.join(FAULT_DIR, "healthy_base.csv")
+
+# --- PHYSICAL PARAMETERS ---
 BASE_MASS = 50.0
 BASE_STIFFNESS = 200000.0
 DAMPING_RATIO = 0.02
-FORCE_RMS = 50.0
+FORCE_RMS = 200.0
 FORCE_SEED = 42
 SIM_DURATION = 10.0
 DT = 0.01
-
-FAULT_DIR = "data_generation/faults"
-PLOTS_DIR = os.path.join(FAULT_DIR, "plots")
 NUM_DOFS = 4
 
 def init_force(T_total, dt, num_dofs, rms, seed):
@@ -54,7 +58,7 @@ def compute_matrices(m, k, zeta, num_dofs):
     C = alpha * M + beta * K
     return M, C, K
 
-def run_simulation(cfg, force_tensor, out_csv, duration, dt=0.01, zeta=None):
+def run_simulation(cfg, force_tensor, duration, dt=0.01, zeta=None):
     m, k = np.array(cfg["mass"]), np.array(cfg["stiffness"])
     nd = cfg["num_dofs"]
     T_total, beta, gamma = duration, cfg["beta"], cfg["gamma"]
@@ -89,102 +93,105 @@ def run_simulation(cfg, force_tensor, out_csv, duration, dt=0.01, zeta=None):
     data = np.vstack((x, v, a)).T
     labels = [f"x{j+1}" for j in range(nd)] + [f"v{j+1}" for j in range(nd)] + [f"a{j+1}" for j in range(nd)]
     df = pd.DataFrame(data, columns=labels)
-    os.makedirs(os.path.dirname(out_csv), exist_ok=True)
-    df.to_csv(out_csv, index=False)
-    print(f"Saved: {out_csv}")
-    return t, x, v, a
+    return t, df
 
-# ---- PLOTTING HELPERS ----
-def plot_comparison_all_dofs(normal_file, fault_file, fault_label, plots_dir):
-    df_n = pd.read_csv(normal_file)
-    df_f = pd.read_csv(fault_file)
-    t = np.linspace(0, SIM_DURATION, len(df_n))
+def plot_comparison_all_dofs(normal_df, fault_df, fault_label, plots_dir):
+    t = np.linspace(0, SIM_DURATION, len(normal_df))
+    stats = []
     for dof in range(1, NUM_DOFS + 1):
         fig, axes = plt.subplots(3, 2, figsize=(18, 8))
-        # Displacement
-        axes[0, 0].plot(t, df_n[f'x{dof}'], label=f"Normal x{dof}")
-        axes[0, 0].set_title(f"x{dof}: Normal")
-        axes[0, 1].plot(t, df_f[f'x{dof}'], color='r', label=f"Fault x{dof} ({fault_label})")
-        axes[0, 1].set_title(f"x{dof}: Fault")
-        # Velocity
-        axes[1, 0].plot(t, df_n[f'v{dof}'], label=f"Normal v{dof}", color='orange')
-        axes[1, 0].set_title(f"v{dof}: Normal")
-        axes[1, 1].plot(t, df_f[f'v{dof}'], color='brown', label=f"Fault v{dof} ({fault_label})")
-        axes[1, 1].set_title(f"v{dof}: Fault")
-        # Acceleration
-        axes[2, 0].plot(t, df_n[f'a{dof}'], label=f"Normal a{dof}", color='green')
-        axes[2, 0].set_title(f"a{dof}: Normal")
-        axes[2, 1].plot(t, df_f[f'a{dof}'], color='darkgreen', label=f"Fault a{dof} ({fault_label})")
-        axes[2, 1].set_title(f"a{dof}: Fault")
-        # Labels and layout
-        for i in range(3):
-            axes[i, 0].legend()
-            axes[i, 1].legend()
-            axes[i, 0].set_ylabel(["Displacement (m)", "Velocity (m/s)", "Acceleration (m/s²)"][i])
-        for j in range(2):
-            axes[2, j].set_xlabel("Time (s)")
+        for j, var in enumerate(['x', 'v', 'a']):
+            normal = normal_df[f"{var}{dof}"]
+            fault = fault_df[f"{var}{dof}"]
+            axes[j, 0].plot(t, normal, label=f"Normal {var}{dof}", color=['b', 'orange', 'green'][j])
+            axes[j, 0].set_title(f"{var}{dof}: Normal")
+            axes[j, 1].plot(t, fault, label=f"Fault {var}{dof} ({fault_label})", color=['r', 'brown', 'darkgreen'][j])
+            axes[j, 1].set_title(f"{var}{dof}: Fault")
+            axes[j, 0].legend(); axes[j, 1].legend()
+            axes[j, 0].set_ylabel(["Displacement (m)", "Velocity (m/s)", "Acceleration (m/s²)"][j])
+            axes[2, j%2].set_xlabel("Time (s)")
+            max_diff = np.max(np.abs(normal - fault))
+            min_diff = np.min(normal - fault)
+            stats.append([f"{var}{dof}", max_diff, min_diff])
         plt.suptitle(f"DOF {dof}: Normal vs Fault ({fault_label}) — Displacement, Velocity, Acceleration")
         plt.tight_layout(rect=[0, 0.03, 1, 0.97])
         os.makedirs(plots_dir, exist_ok=True)
-        out_img = os.path.join(plots_dir, f"{os.path.splitext(os.path.basename(fault_file))[0]}_DOF{dof}.png")
+        out_img = os.path.join(plots_dir, f"{fault_label}_DOF{dof}.png")
         plt.savefig(out_img)
         plt.close()
-        print(f"Plot saved to {out_img}")
+    return stats
 
-# ---- STRUCTURAL FAULTS ----
-def generate_structural_faults(normal_file):
-    for k2_reduction in [0.5, 0.7, 0.8]:
-        fault_cfg = {
-            "mass": [BASE_MASS * 1.2, BASE_MASS, BASE_MASS, BASE_MASS * 0.8],
-            "stiffness": [BASE_STIFFNESS * 1.5,
-                          BASE_STIFFNESS * 1.2 * k2_reduction,
-                          BASE_STIFFNESS,
-                          BASE_STIFFNESS * 0.8],
-            "beta": 0.25, "gamma": 0.5, "num_dofs": NUM_DOFS
-        }
-        force_tensor = init_force(SIM_DURATION, DT, NUM_DOFS, FORCE_RMS, FORCE_SEED)
-        out_csv = os.path.join(FAULT_DIR, f"structural_fault_k2_reduced_{int(100*k2_reduction)}.csv")
-        run_simulation(fault_cfg, force_tensor, out_csv, SIM_DURATION, dt=DT, zeta=DAMPING_RATIO)
-        plot_comparison_all_dofs(normal_file, out_csv, f"k2 reduced {int(100*k2_reduction)}%", PLOTS_DIR)
+def log_table(stats, folder):
+    df = pd.DataFrame(stats, columns=["Variable", "Max_Abs_Deviation", "Min_Deviation"])
+    df.to_csv(os.path.join(folder, "deviation_stats.csv"), index=False)
+    print(f"Deviation stats saved to {os.path.join(folder, 'deviation_stats.csv')}")
+    print(df)
 
-    for damping_reduction in [0.5, 0.3, 0.1]:
-        fault_cfg = {
-            "mass": [BASE_MASS * 1.2, BASE_MASS, BASE_MASS, BASE_MASS * 0.8],
-            "stiffness": [BASE_STIFFNESS * 1.5,
-                          BASE_STIFFNESS * 1.2,
-                          BASE_STIFFNESS,
-                          BASE_STIFFNESS * 0.8],
-            "beta": 0.25, "gamma": 0.5, "num_dofs": NUM_DOFS
-        }
-        force_tensor = init_force(SIM_DURATION, DT, NUM_DOFS, FORCE_RMS, FORCE_SEED)
-        out_csv = os.path.join(FAULT_DIR, f"structural_fault_c1_reduced_{int(100*damping_reduction)}.csv")
-        run_simulation(fault_cfg, force_tensor, out_csv, SIM_DURATION, dt=DT, zeta=DAMPING_RATIO * damping_reduction)
-        plot_comparison_all_dofs(normal_file, out_csv, f"c1 reduced {int(100*damping_reduction)}%", PLOTS_DIR)
+def make_structural_faults(normal_df, force_tensor, healthy_cfg):
+    reductions = [0.7, 0.8, 0.9, 1.0]
+    for perc in reductions:
+        fault_cfg = healthy_cfg.copy()
+        fault_cfg["stiffness"] = [s * perc for s in healthy_cfg["stiffness"]]
+        label = f"k1_k2_k3_k4_reduced_{int(perc*100)}"
+        f_dir = os.path.join(STRUCTURAL_FAULT_DIR, label)
+        plot_dir = os.path.join(f_dir, PLOT_SUFFIX)
+        _, fault_df = run_simulation(fault_cfg, force_tensor, SIM_DURATION, dt=DT, zeta=DAMPING_RATIO)
+        fpath = os.path.join(f_dir, f"{label}.csv")
+        os.makedirs(f_dir, exist_ok=True)
+        fault_df.to_csv(fpath, index=False)
+        stats = plot_comparison_all_dofs(normal_df, fault_df, label, plot_dir)
+        log_table(stats, f_dir)
 
-# ---- SENSOR FAULTS ----
-def generate_sensor_faults(normal_file):
-    df_normal = pd.read_csv(normal_file)
-    # Sensor x1 zero
-    df_x1_zero = df_normal.copy()
-    df_x1_zero["x1"] = 0
-    out_csv = os.path.join(FAULT_DIR, "sensor_fault_x1_zero.csv")
-    df_x1_zero.to_csv(out_csv, index=False)
-    plot_comparison_all_dofs(normal_file, out_csv, "x1 zero", PLOTS_DIR)
-    print("Sensor fault (x1 zero) saved to", out_csv)
-    # Sensor v3 noisy
-    df_v3_noisy = df_normal.copy()
+def add_sensor_noise(df, cols, std=0.2):
+    noisy_df = df.copy()
     np.random.seed(123)
-    df_v3_noisy["v3"] += np.random.normal(0, 10, size=len(df_v3_noisy))
-    out_csv = os.path.join(FAULT_DIR, "sensor_fault_v3_noisy.csv")
-    df_v3_noisy.to_csv(out_csv, index=False)
-    plot_comparison_all_dofs(normal_file, out_csv, "v3 noisy", PLOTS_DIR)
-    print("Sensor fault (v3 noisy) saved to", out_csv)
+    for col in cols:
+        noisy_df[col] += np.random.normal(0, std, size=len(df))
+    return noisy_df
 
-# ---- MAIN ----
+def add_spiky_fault(df, cols, mag=0.1, freq=0.1):
+    spiky_df = df.copy()
+    np.random.seed(123)
+    n = len(df)
+    for col in cols:
+        spikes = np.zeros(n)
+        spikes_idx = np.random.choice(n, int(n*freq), replace=False)
+        spikes[spikes_idx] = np.random.normal(mag, mag/2, size=len(spikes_idx))
+        spiky_df[col] += spikes
+    return spiky_df
+
+def add_drift_fault(df, cols, slope=0.005):
+    drift_df = df.copy()
+    n = len(df)
+    drift = np.linspace(0, slope*n, n)
+    for col in cols:
+        drift_df[col] += drift
+    return drift_df
+
+def add_bias_fault(df, cols, bias=0.1):
+    bias_df = df.copy()
+    for col in cols:
+        bias_df[col] += bias
+    return bias_df
+
+def make_sensor_faults(normal_df):
+    faults = {
+        "noisy": lambda df: add_sensor_noise(df, ["x4", "v4", "a4"], std=0.3),
+        "spiky": lambda df: add_spiky_fault(df, ["x1", "v1", "a1"], mag=0.25, freq=0.08),
+        "drift": lambda df: add_drift_fault(df, ["x2", "v2", "a2"], slope=0.003),
+        "bias":  lambda df: add_bias_fault(df, ["x3", "v3", "a3"], bias=0.18)
+    }
+    for fault_name, fault_fn in faults.items():
+        s_dir = os.path.join(SENSOR_FAULT_DIR, fault_name)
+        plot_dir = os.path.join(s_dir, PLOT_SUFFIX)
+        fault_df = fault_fn(normal_df)
+        fpath = os.path.join(s_dir, f"{fault_name}.csv")
+        os.makedirs(s_dir, exist_ok=True)
+        fault_df.to_csv(fpath, index=False)
+        stats = plot_comparison_all_dofs(normal_df, fault_df, fault_name, plot_dir)
+        log_table(stats, s_dir)
+
 if __name__ == "__main__":
-    os.makedirs(FAULT_DIR, exist_ok=True)
-    os.makedirs(PLOTS_DIR, exist_ok=True)
-    # Generate a healthy run as reference for plotting
     healthy_cfg = {
         "mass": [BASE_MASS * 1.2, BASE_MASS, BASE_MASS, BASE_MASS * 0.8],
         "stiffness": [BASE_STIFFNESS * 1.5,
@@ -194,8 +201,22 @@ if __name__ == "__main__":
         "beta": 0.25, "gamma": 0.5, "num_dofs": NUM_DOFS
     }
     force_tensor = init_force(SIM_DURATION, DT, NUM_DOFS, FORCE_RMS, FORCE_SEED)
-    healthy_file = os.path.join(FAULT_DIR, "healthy_base.csv")
-    run_simulation(healthy_cfg, force_tensor, healthy_file, SIM_DURATION, dt=DT, zeta=DAMPING_RATIO)
-    generate_structural_faults(healthy_file)
-    generate_sensor_faults(healthy_file)
-    print("\nAll fault data and all-DOF plots generated in data_generation/faults/plots/")
+
+    if not os.path.isfile(HEALTHY_FILE):
+        print(f"Healthy baseline file not found: {HEALTHY_FILE}")
+        print("Generating healthy baseline data...")
+        _, normal_df = run_simulation(healthy_cfg, force_tensor, SIM_DURATION, dt=DT, zeta=DAMPING_RATIO)
+        os.makedirs(os.path.dirname(HEALTHY_FILE), exist_ok=True)
+        normal_df.to_csv(HEALTHY_FILE, index=False)
+        print(f"Healthy baseline data saved to {HEALTHY_FILE}")
+    else:
+        normal_df = pd.read_csv(HEALTHY_FILE)
+        print(f"Healthy baseline loaded from {HEALTHY_FILE}")
+
+    print("\n--- Generating Structural Faults ---")
+    make_structural_faults(normal_df, force_tensor, healthy_cfg)
+
+    print("\n--- Generating Sensor Faults ---")
+    make_sensor_faults(normal_df)
+
+    print("\nAll faults and plots have been generated. Check the faults folder.")
