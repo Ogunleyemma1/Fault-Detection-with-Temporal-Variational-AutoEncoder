@@ -10,14 +10,17 @@ from temporal_vae import VAE
 import os
 import random
 
-VAL_START = 0.55
-VAL_END = 0.75
+VAL_START = 0.4  # Start at 40%
+VAL_END = 0.7    # End at 70%
 BATCH_SIZE = 500
 DROPOUT = 0.3
 SEED = 42
 
-# !!! Ensure these VAE params MATCH what you used for training !!!
-MODEL_PARAMS = dict(input_dim=12, latent_dim=8, hidden_dim=64, num_layers=2, dropout=0.3)
+MODEL_PARAMS = dict(input_dim=12, latent_dim=16, hidden_dim=128, num_layers=2, dropout=0.3)
+FAULT_DIR = "data_generation/faults"
+PLOT_DIR = "CNN_Validation_Plots"
+
+os.makedirs(PLOT_DIR, exist_ok=True)
 
 random.seed(SEED)
 np.random.seed(SEED)
@@ -25,23 +28,6 @@ torch.manual_seed(SEED)
 torch.cuda.manual_seed_all(SEED)
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
-
-# --- Actual fault files in your directory
-FAULT_DIR = "data_generation/faults"
-FAULT_DATASETS = {
-    "Structural": [
-        "structural_fault_c1_reduced_10.csv",
-        "structural_fault_c1_reduced_30.csv",
-        "structural_fault_c1_reduced_50.csv",
-        "structural_fault_k2_reduced_50.csv",
-        "structural_fault_k2_reduced_70.csv",
-        "structural_fault_k2_reduced_80.csv",
-    ],
-    "Sensor": [
-        "sensor_fault_v3_noisy.csv",
-        "sensor_fault_x1_zero.csv",
-    ]
-}
 
 def load_vae_and_stats(mean_path="vae_mean.npy", std_path="vae_std.npy", model_path="temporal_vae_model.pt"):
     mean, std = np.load(mean_path), np.load(std_path)
@@ -74,21 +60,44 @@ def preprocess_with_recon(filepath, vae, mean, std, device, start_frac, end_frac
     stacked = np.stack([windows, recon_errors], axis=1)  # (N, 2, SEQ_LEN, FEATURES)
     return stacked
 
+def list_fault_files(fault_dir):
+    sensor_faults = []
+    structural_faults = []
+    for root, dirs, files in os.walk(fault_dir):
+        for f in files:
+            if f.endswith(".csv") and not f.startswith("deviation_stats"):
+                path = os.path.join(root, f)
+                if "sensor_faults" in root.replace("\\", "/"):
+                    sensor_faults.append(path)
+                elif "structural_faults" in root.replace("\\", "/"):
+                    structural_faults.append(path)
+    return sensor_faults, structural_faults
+
 def main():
     vae, mean, std, device = load_vae_and_stats()
     X, y = [], []
-    for label, files in FAULT_DATASETS.items():
-        for fname in files:
-            fpath = os.path.join(FAULT_DIR, fname)
-            print(f"Processing: {fpath}")
-            if not os.path.isfile(fpath):
-                print(f"WARNING: File not found: {fpath}")
-                continue
-            stacked = preprocess_with_recon(fpath, vae, mean, std, device, VAL_START, VAL_END)
-            if stacked is not None:
-                X.append(stacked)
-                label_val = 1 if label == "Structural" else 0
-                y.append(np.full(len(stacked), label_val))
+
+    # Find all fault files (sensor/structural)
+    sensor_faults, structural_faults = list_fault_files(FAULT_DIR)
+
+    print(f"Found {len(sensor_faults)} sensor fault files and {len(structural_faults)} structural fault files.")
+
+    # Sensor faults: label = 0
+    for fpath in sensor_faults:
+        print(f"Processing sensor fault: {fpath}")
+        stacked = preprocess_with_recon(fpath, vae, mean, std, device, VAL_START, VAL_END)
+        if stacked is not None:
+            X.append(stacked)
+            y.append(np.zeros(len(stacked), dtype=int))
+
+    # Structural faults: label = 1
+    for fpath in structural_faults:
+        print(f"Processing structural fault: {fpath}")
+        stacked = preprocess_with_recon(fpath, vae, mean, std, device, VAL_START, VAL_END)
+        if stacked is not None:
+            X.append(stacked)
+            y.append(np.ones(len(stacked), dtype=int))
+
     if not X:
         print("ERROR: No data found for validation!")
         return
@@ -107,8 +116,15 @@ def main():
             preds = outputs.argmax(1).cpu().numpy()
             y_true.extend(yb.numpy())
             y_pred.extend(preds)
+
+    # --- Save and print classification report ---
+    report_str = classification_report(y_true, y_pred, target_names=["Sensor Fault", "Structural Fault"], zero_division=0)
     print("\nCNN Validation Classification Report:")
-    print(classification_report(y_true, y_pred, target_names=["Sensor Fault", "Structural Fault"], zero_division=0))
+    print(report_str)
+    with open(os.path.join(PLOT_DIR, "cnn_validation_classification_report.txt"), "w") as f:
+        f.write(report_str)
+
+    # --- Confusion matrix ---
     cm = confusion_matrix(y_true, y_pred)
     plt.figure(figsize=(5, 4))
     sns.heatmap(cm, annot=True, fmt="d", cmap="Blues",
@@ -118,7 +134,11 @@ def main():
     plt.ylabel("True Label")
     plt.title("Confusion Matrix (CNN Validation)")
     plt.tight_layout()
+    plot_path = os.path.join(PLOT_DIR, "cnn_validation_confusion_matrix.png")
+    plt.savefig(plot_path)
     plt.show()
+    plt.close()
+    print(f"Confusion matrix plot saved to {plot_path}")
 
 if __name__ == "__main__":
     main()
