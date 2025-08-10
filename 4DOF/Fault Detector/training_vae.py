@@ -4,6 +4,7 @@ import torch.optim as optim
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import os
 from torch.utils.data import DataLoader, TensorDataset
 
 from temporal_vae import VAE
@@ -16,7 +17,6 @@ def kl_anneal_function(epoch, n_epochs, start=0.0, stop=1.0, anneal_ratio=0.3):
 def train_vae(seq_len=100):
     # === REPLACE DATA LOADING BLOCK ===
     # 1. Load all healthy_seed CSVs
-    import os
     HEALTHY_DIR = "data_generation/healthy_runs"
     dfs = []
     for f in sorted(os.listdir(HEALTHY_DIR)):
@@ -38,7 +38,7 @@ def train_vae(seq_len=100):
     windows = np.stack(windows)
     print(f"Total windows: {len(windows)}")
 
-    # 4. Use only first 40% for training (shuffle if you want random sample, here just take first 40%)
+    # 4. Use only first 40% for training
     n_total = len(windows)
     n_train = int(0.4 * n_total)
     windows = windows[:n_train]
@@ -90,7 +90,14 @@ def train_vae(seq_len=100):
 
     torch.save(model.state_dict(), "temporal_vae_model.pt")
 
-    # Plot
+    # --- SAVE LOSSES AND PLOT ---
+    plot_dir = "VAE_Training_Plot"
+    os.makedirs(plot_dir, exist_ok=True)
+
+    np.save(os.path.join(plot_dir, "vae_total_loss.npy"), np.array(losses))
+    np.save(os.path.join(plot_dir, "vae_recon_loss.npy"), np.array(recon_losses))
+    np.save(os.path.join(plot_dir, "vae_kld_loss.npy"), np.array(kld_losses))
+
     plt.figure(figsize=(10, 6))
     plt.plot(losses, label="Total Loss")
     plt.plot(recon_losses, label="Reconstruction Loss")
@@ -100,6 +107,7 @@ def train_vae(seq_len=100):
     plt.legend()
     plt.grid()
     plt.tight_layout()
+    plt.savefig(os.path.join(plot_dir, "vae_training_loss_plot.png"))
     plt.show()
 
 if __name__ == "__main__":

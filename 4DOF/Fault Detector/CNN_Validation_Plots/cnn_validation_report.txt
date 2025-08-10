@@ -1,0 +1,8 @@
+                   precision    recall  f1-score   support
+
+     Sensor Fault       1.00      0.82      0.90       804
+Structural Damage       0.85      1.00      0.92       804
+
+         accuracy                           0.91      1608
+        macro avg       0.92      0.91      0.91      1608
+     weighted avg       0.92      0.91      0.91      1608
